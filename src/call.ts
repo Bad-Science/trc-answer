@@ -1,5 +1,16 @@
-import { WebSocketBehavior } from "uWebSockets.js";
+import { WebSocket, WebSocketBehavior } from "uWebSockets.js";
+import { Connection, ConnectionManager, ConnectionUnavailableException } from "./connections";
+import { SystemPhoneNumber } from "./rolodex";
 import { RequestBehavior } from "./router";
+import { AzureSpeechToText, SpeechToText } from "./speech";
+
+const connectionManager = new ConnectionManager();
+
+function getConnection(ws: WebSocket): Connection<WebSocket> {
+  const conn: Connection<WebSocket>|undefined = ws['conn'];
+  if (conn) return conn;
+  throw new ConnectionUnavailableException(ws['id']);
+}
 
 export const receive: WebSocketBehavior = {
   /* There are many common helper features */
@@ -17,7 +28,7 @@ export const receive: WebSocketBehavior = {
     res.upgrade(
       { 
         url: req.getUrl(),
-        systemPhoneNumber: phoneNumber
+        id: phoneNumber
       },
       /* Spell these correctly */
       req.getHeader('sec-websocket-key'),
@@ -28,13 +39,19 @@ export const receive: WebSocketBehavior = {
   },
 
   open: (ws) => {
-    console.log(`Websocket connection opened for ${ws['systemPhoneNumber']}`);
+    const id: SystemPhoneNumber = ws['id'];
+    console.log(`Websocket connection opened for ${id}`);
+
+    const conn: Connection<WebSocket> = new Connection(id, ws, AzureSpeechToText.create());
+    ws['conn'] = conn;
+    conn.transformer.listen();
   },
   message: (ws, message, isBinary) => {
     /* Ok is false if backpressure was built up, wait for drain */
     if (isBinary) {
-      let ok = ws.send(message, isBinary);
-      
+      // let ok = ws.send(message, isBinary);
+      const conn: Connection<WebSocket> = getConnection(ws);
+      conn.transformer.write(message);
     } else {
       console.error("Invalid Message: %s", message);
     }
@@ -42,7 +59,9 @@ export const receive: WebSocketBehavior = {
   drain: (ws) => {
     console.log('WebSocket backpressure: ' + ws.getBufferedAmount());
   },
-  close: (ws, code, message) => { 
+  close: (ws, code, message) => {
+    const conn: Connection<WebSocket> = getConnection(ws);
+    conn.transformer.close();
     console.log('WebSocket closed');
   }
 }
