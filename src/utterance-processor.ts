@@ -1,4 +1,4 @@
-import { UtteranceHandler } from "./speech";
+export type UtteranceHandler = (speech: string) => string|null;
 
 const loggingUtteranceHandler: UtteranceHandler = (speech: string) => {
     console.log(speech);
@@ -23,5 +23,8 @@ export class LoggingUtteranceProcessor implements UtteranceProcessor {
 }
 
 export class AnsweringMachineUtternaceProcessor extends LoggingUtteranceProcessor {
+    onCompleteUtterance: UtteranceHandler = (speech: string) {
 
+    }
+    onPartialUtterance: UtteranceHandler = loggingUtteranceHandler;
 };
